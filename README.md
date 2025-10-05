@@ -2,6 +2,10 @@
 
 An interactive web application for visualizing flight data on a map. Upload CSV files containing flight information and see flight routes displayed as curved geodesic lines connecting airports on an interactive map with color-coded frequency indicators.
 
+## Screenshot
+
+![Flight Visualisation App](docs/images/main_view.png)
+
 ## Features
 
 - 📁 **CSV File Upload**: Simple drag-and-drop or click-to-upload interface with processing state
