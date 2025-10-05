@@ -6,12 +6,20 @@
         <FileUploadModal 
           @file-uploaded="handleFileUpload" 
           :is-processing="isProcessing"
+          :disabled="isAnimating"
         />
       </div>
       <div class="filter-section" v-if="flightVisualizations.length > 0">
         <YearFilter 
           :visualizations="flightVisualizations"
           @filter-changed="handleFilterChanged"
+          :disabled="isAnimating"
+        />
+      </div>
+      <div class="play-section" v-if="flightVisualizations.length > 0">
+        <PlayControl 
+          :is-playing="isAnimating"
+          @toggle="handlePlayToggle"
         />
       </div>
     </div>
@@ -23,7 +31,10 @@
     />
 
     <!-- Third row: Map -->
-    <MapView :flight-visualizations="filteredVisualizations" />
+    <MapView 
+      ref="mapViewRef"
+      :flight-visualizations="filteredVisualizations" 
+    />
   </div>
 </template>
 
@@ -33,6 +44,7 @@ import FileUploadModal from './components/FileUploadModal.vue'
 import MapView from './components/MapView.vue'
 import YearFilter from './components/YearFilter.vue'
 import ResultBanner from './components/ResultBanner.vue'
+import PlayControl from './components/PlayControl.vue'
 import { parseFlightsCsv } from './utils/flightDataParser'
 import { loadAirportsWithReplacements } from './utils/airportsParser'
 import { buildFlightVisualizations } from './utils/flightVisualizationBuilder'
@@ -53,6 +65,8 @@ const distinctAirportsCount = ref(0)
 const airportsMap = ref<AirportsMap>(new Map())
 const codeReplacements = ref<CodeReplacementMap>(new Map())
 const isLoadingAirports = ref(true)
+const isAnimating = ref(false)
+const mapViewRef = ref<InstanceType<typeof MapView> | null>(null)
 
 // Load airports and code replacements on mount
 onMounted(async () => {
@@ -119,6 +133,25 @@ const handleFileUpload = async (file: File) => {
 const handleFilterChanged = (filtered: FlightVisualizationData[]) => {
   filteredVisualizations.value = filtered
 }
+
+const handlePlayToggle = () => {
+  if (isAnimating.value) {
+    // Stop animation
+    isAnimating.value = false
+    if (mapViewRef.value) {
+      mapViewRef.value.stopAnimation()
+    }
+  } else {
+    // Start animation
+    isAnimating.value = true
+    if (mapViewRef.value) {
+      mapViewRef.value.startAnimation().then(() => {
+        // Animation completed
+        isAnimating.value = false
+      })
+    }
+  }
+}
 </script>
 
 <style scoped>
@@ -131,6 +164,8 @@ const handleFilterChanged = (filtered: FlightVisualizationData[]) => {
 
 .top-row {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   border-bottom: 1px solid #e2e8f0;
   background-color: #f9fafb;
   min-height: 80px;
@@ -146,14 +181,28 @@ const handleFilterChanged = (filtered: FlightVisualizationData[]) => {
   min-width: 350px;
 }
 
+.play-section {
+  flex: 0 0 auto;
+  min-width: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 @media (max-width: 700px) {
   .top-row {
     flex-direction: column;
   }
   
   .upload-section,
-  .filter-section {
+  .filter-section,
+  .play-section {
     width: 100%;
+    min-width: 150px;
+  }
+  
+  .upload-section,
+  .filter-section {
     min-width: 350px;
   }
 }
