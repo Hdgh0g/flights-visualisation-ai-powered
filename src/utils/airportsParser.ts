@@ -1,5 +1,8 @@
 import { Airport, type AirportData, type AirportsMap } from '../types/Airport'
 
+// Map of old airport codes to new codes (for airports that have changed their IATA codes)
+type CodeReplacementMap = Map<string, string>
+
 function parseCsvLine(line: string): string[] {
   const result: string[] = []
   let current = ''
@@ -102,8 +105,7 @@ export function parseAirportsCsv(csvContent: string): AirportsMap {
         ident,
         type,
         name,
-        latitude,
-        longitude,
+        coordinates: [latitude, longitude],
         elevationFt,
         continent,
         isoCountry,
@@ -129,6 +131,43 @@ export function parseAirportsCsv(csvContent: string): AirportsMap {
 }
 
 /**
+ * Load airport code replacements from the public data file
+ * Returns a map of old codes to new codes
+ */
+async function loadAirportCodeReplacements(): Promise<CodeReplacementMap> {
+  const replacements: CodeReplacementMap = new Map()
+  
+  try {
+    const response = await fetch('/data/airport-code-replacements.csv')
+    if (!response.ok) {
+      console.warn('Airport code replacements file not found, skipping')
+      return replacements
+    }
+    
+    const csvText = await response.text()
+    const lines = csvText.split('\n').filter(line => line.trim() !== '')
+    
+    // Skip header row
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseCsvLine(lines[i])
+      if (values.length >= 2) {
+        const oldCode = values[0]?.trim()
+        const newCode = values[1]?.trim()
+        if (oldCode && newCode) {
+          replacements.set(oldCode, newCode)
+        }
+      }
+    }
+    
+    console.log(`Loaded ${replacements.size} airport code replacements`)
+  } catch (error) {
+    console.warn('Failed to load airport code replacements:', error)
+  }
+  
+  return replacements
+}
+
+/**
  * Load airports from the public data file
  */
 export async function loadAirports(): Promise<AirportsMap> {
@@ -143,4 +182,40 @@ export async function loadAirports(): Promise<AirportsMap> {
     console.error('Error loading airports:', error)
     return new Map()
   }
+}
+
+/**
+ * Get airport by code, with fallback to replacement codes if not found
+ */
+export function getAirportByCode(
+  code: string,
+  airportsMap: AirportsMap,
+  replacements: CodeReplacementMap
+): Airport | undefined {
+  // Try direct lookup first
+  let airport = airportsMap.get(code)
+  
+  // If not found, check if there's a replacement code
+  if (!airport && replacements.has(code)) {
+    const newCode = replacements.get(code)!
+    console.log(`Airport code ${code} has been replaced with ${newCode}`)
+    airport = airportsMap.get(newCode)
+  }
+  
+  return airport
+}
+
+/**
+ * Load both airports and code replacements
+ */
+export async function loadAirportsWithReplacements(): Promise<{
+  airportsMap: AirportsMap
+  replacements: CodeReplacementMap
+}> {
+  const [airportsMap, replacements] = await Promise.all([
+    loadAirports(),
+    loadAirportCodeReplacements()
+  ])
+  
+  return { airportsMap, replacements }
 }

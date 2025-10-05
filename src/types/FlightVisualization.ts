@@ -3,13 +3,9 @@ import type { Flight } from './Flight'
 
 export interface FlightVisualizationData {
   fromAirport: Airport
-  fromCoordinates: [number, number]
   toAirport: Airport
-  toCoordinates: [number, number]
   departureTimestamp: Date
   arrivalTimestamp: Date
-  flightNumber: string
-  airline: string
   flight: Flight
 }
 
@@ -28,13 +24,9 @@ export function createFlightVisualization(
 ): FlightVisualizationData {
   return {
     fromAirport,
-    fromCoordinates: fromAirport.getCoordinates(),
     toAirport,
-    toCoordinates: toAirport.getCoordinates(),
     departureTimestamp: flight.departureTimestampLocal,
     arrivalTimestamp: flight.arrivalTimestampLocal,
-    flightNumber: flight.flightCode,
-    airline: flight.airline,
     flight
   }
 }

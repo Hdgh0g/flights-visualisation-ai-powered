@@ -19,12 +19,52 @@ const props = defineProps<{
 const mapContainer = ref<HTMLElement | null>(null)
 let map: L.Map | null = null
 const markers: L.Marker[] = []
+const markerData: Map<L.Marker, { airport: Airport; color: string }> = new Map()
 const flightLines: any[] = [] // Using any because geodesic doesn't have types
 let currentOpenMarker: L.Marker | null = null
 
 // Helsinki coordinates (default center)
 const HELSINKI_LAT = 60.1699
 const HELSINKI_LNG = 24.9384
+
+// Calculate line weight based on zoom level
+function getLineWeight(zoom: number): number {
+  // Base weight at zoom level 4
+  const baseZoom = 4
+  const baseWeight = 2
+  
+  // Scale factor: increase weight as zoom increases
+  // At zoom 2: weight = 1
+  // At zoom 4: weight = 2
+  // At zoom 8: weight = 4
+  // At zoom 12: weight = 6
+  const weight = baseWeight * Math.pow(1.4, zoom - baseZoom)
+  
+  // Clamp between 0.5 and 8
+  return Math.max(0.5, Math.min(8, weight))
+}
+
+// Calculate marker size based on zoom level
+function getMarkerSize(zoom: number): number {
+  const baseSize = 16
+  
+  // Only shrink markers on zoom levels 2-3 (farthest out)
+  // Keep at 16px for zoom 4 and above
+  if (zoom >= 4) {
+    return baseSize
+  }
+  
+  // Linear interpolation for zoom 2-3
+  // At zoom 2: size = 10
+  // At zoom 3: size = 13
+  // At zoom 4+: size = 16
+  const minSize = 10
+  const zoomRange = 4 - 2 // zoom 2 to 4
+  const sizeRange = baseSize - minSize
+  const zoomFactor = (zoom - 2) / zoomRange
+  
+  return minSize + (sizeRange * zoomFactor)
+}
 
 // Get color based on frequency (blue = infrequent, red = frequent)
 function getFrequencyColor(frequency: number, maxFrequency: number): string {
@@ -63,25 +103,61 @@ function interpolateColor(color1: string, color2: string, ratio: number): string
   return `rgb(${r}, ${g}, ${b})`
 }
 
+// Format date for display in popup
+function formatFlightDate(date: Date): string {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  const day = date.getDate()
+  const month = months[date.getMonth()]
+  const year = date.getFullYear()
+  return `${day} ${month} ${year}`
+}
+
 // Custom marker icon with IATA code and frequency-based color
-function createAirportMarker(airport: Airport, color: string): L.DivIcon {
+function createAirportMarker(airport: Airport, color: string, size: number): L.DivIcon {
+  const halfSize = size / 2
+  // Use CSS custom property to set the base size, let CSS handle hover size
   return L.divIcon({
     className: 'airport-marker',
-    html: `<div class="airport-marker-content" style="background-color: ${color}; border-color: white;"><span class="airport-code-text">${airport.iataCode}</span></div>`,
-    iconSize: [16, 16],
-    iconAnchor: [8, 8]
+    html: `<div class="airport-marker-content" style="background-color: ${color}; border-color: white; --marker-size: ${size}px;"><span class="airport-code-text">${airport.iataCode}</span></div>`,
+    iconSize: [size, size],
+    iconAnchor: [halfSize, halfSize]
   })
 }
 
 function clearMarkers() {
   markers.forEach(marker => marker.remove())
   markers.length = 0
+  markerData.clear()
   currentOpenMarker = null
 }
 
 function clearFlightLines() {
   flightLines.forEach(line => line.remove())
   flightLines.length = 0
+}
+
+function updateLineWeights() {
+  if (!map) return
+  const currentZoom = map.getZoom()
+  const newWeight = getLineWeight(currentZoom)
+  
+  flightLines.forEach(line => {
+    line.setStyle({ weight: newWeight })
+  })
+}
+
+function updateMarkerSizes() {
+  if (!map) return
+  const currentZoom = map.getZoom()
+  const newSize = getMarkerSize(currentZoom)
+  
+  markers.forEach(marker => {
+    const data = markerData.get(marker)
+    if (data) {
+      const newIcon = createAirportMarker(data.airport, data.color, newSize)
+      marker.setIcon(newIcon)
+    }
+  })
 }
 
 function visualizeFlights(visualizations: FlightVisualizationData[]) {
@@ -121,10 +197,35 @@ function visualizeFlights(visualizations: FlightVisualizationData[]) {
 
   const bounds: L.LatLngBoundsExpression = []
 
+  // Group flights by route (bidirectional - A-B and B-A are the same route)
+  const routeFlights = new Map<string, FlightVisualizationData[]>()
+  visualizations.forEach(viz => {
+    // Create a canonical route key (alphabetically sorted to group A-B with B-A)
+    const routeKey = [viz.fromAirport.iataCode, viz.toAirport.iataCode].sort().join('-')
+    if (!routeFlights.has(routeKey)) {
+      routeFlights.set(routeKey, [])
+    }
+    routeFlights.get(routeKey)!.push(viz)
+  })
+
+  // Track which routes we've already drawn (to avoid drawing the same line multiple times)
+  const drawnRoutes = new Set<string>()
+
   // Add flight route lines first (so they appear under markers)
   visualizations.forEach(viz => {
-    const fromCoords: L.LatLngExpression = [viz.fromAirport.latitude, viz.fromAirport.longitude]
-    const toCoords: L.LatLngExpression = [viz.toAirport.latitude, viz.toAirport.longitude]
+    // Create route key for this specific direction
+    const routeKey = [viz.fromAirport.iataCode, viz.toAirport.iataCode].sort().join('-')
+    
+    // Skip if we've already drawn this route
+    if (drawnRoutes.has(routeKey)) {
+      return
+    }
+    drawnRoutes.add(routeKey)
+    
+    // Get all flights for this route (both directions)
+    const flightsOnRoute = routeFlights.get(routeKey) || []
+    const fromCoords: L.LatLngExpression = viz.fromAirport.coordinates
+    const toCoords: L.LatLngExpression = viz.toAirport.coordinates
 
     // Get colors for both airports
     const fromFreq = airportFrequency.get(viz.fromAirport.iataCode) || 0
@@ -145,6 +246,67 @@ function visualizeFlights(visualizations: FlightVisualizationData[]) {
     // Number of gradient segments
     const numSegments = 10
     const segmentSize = Math.floor(pathPoints.length / numSegments)
+    
+    // Group flights by direction for display
+    const outboundFlights = flightsOnRoute.filter(f => 
+      f.fromAirport.iataCode === viz.fromAirport.iataCode && 
+      f.toAirport.iataCode === viz.toAirport.iataCode
+    )
+    const returnFlights = flightsOnRoute.filter(f => 
+      f.fromAirport.iataCode === viz.toAirport.iataCode && 
+      f.toAirport.iataCode === viz.fromAirport.iataCode
+    )
+    
+    // Create popup content with all flights on this route
+    let popupContent = `<div class="flight-popup">`
+    
+    // Show outbound flights
+    if (outboundFlights.length > 0) {
+      popupContent += `
+        <div class="flight-route">
+          <span style="color: ${fromColor}; font-weight: bold;">${viz.fromAirport.iataCode}</span>
+          →
+          <span style="color: ${toColor}; font-weight: bold;">${viz.toAirport.iataCode}</span>
+        </div>
+      `
+      outboundFlights.forEach(f => {
+        const flightDate = formatFlightDate(f.departureTimestamp)
+        popupContent += `
+          <div class="flight-info">
+            <span class="flight-number">${f.flight.airline} ${f.flight.flightCode}</span>
+            <span class="flight-date">${flightDate}</span>
+          </div>
+        `
+      })
+    }
+    
+    // Show return flights
+    if (returnFlights.length > 0) {
+      if (outboundFlights.length > 0) {
+        popupContent += `<div class="flight-separator"></div>`
+      }
+      popupContent += `
+        <div class="flight-route">
+          <span style="color: ${toColor}; font-weight: bold;">${viz.toAirport.iataCode}</span>
+          →
+          <span style="color: ${fromColor}; font-weight: bold;">${viz.fromAirport.iataCode}</span>
+        </div>
+      `
+      returnFlights.forEach(f => {
+        const flightDate = formatFlightDate(f.departureTimestamp)
+        popupContent += `
+          <div class="flight-info">
+            <span class="flight-number">${f.flight.airline} ${f.flight.flightCode}</span>
+            <span class="flight-date">${flightDate}</span>
+          </div>
+        `
+      })
+    }
+    
+    popupContent += `</div>`
+    
+    // Store segments for this flight to share the popup
+    const flightSegments: L.Polyline[] = []
 
     // Draw multiple segments with interpolated colors
     for (let i = 0; i < numSegments; i++) {
@@ -158,37 +320,46 @@ function visualizeFlights(visualizations: FlightVisualizationData[]) {
       const ratio = i / (numSegments - 1)
       const segmentColor = interpolateColor(fromColor, toColor, ratio)
 
+      const currentZoom = map!.getZoom()
       const segment = L.polyline(segmentPoints, {
         color: segmentColor,
-        weight: 2,
+        weight: getLineWeight(currentZoom),
         opacity: 0.6
       })
         .addTo(map!)
 
-      // Only add popup to the first segment
-      if (i === 0) {
-        segment.bindPopup(`
-          <div class="flight-popup">
-            <div class="flight-route">${viz.fromAirport.iataCode} → ${viz.toAirport.iataCode}</div>
-            <div class="flight-info">${viz.airline} ${viz.flightNumber}</div>
-          </div>
-        `)
-      }
-
+      flightSegments.push(segment)
       flightLines.push(segment)
+    }
+    
+    // Bind popup to the middle segment (5th segment, index 4)
+    const middleSegmentIndex = 4
+    if (flightSegments[middleSegmentIndex]) {
+      const middleSegment = flightSegments[middleSegmentIndex]
+      middleSegment.bindPopup(popupContent)
+      
+      // When any segment is clicked, open the popup on the middle segment
+      flightSegments.forEach(segment => {
+        segment.on('click', () => {
+          middleSegment.openPopup()
+        })
+      })
     }
   })
 
   // Add markers for each unique airport (on top of lines)
+  const currentZoom = map.getZoom()
+  const markerSize = getMarkerSize(currentZoom)
+  
   airportsMap.forEach(airport => {
-    const coords: L.LatLngExpression = [airport.latitude, airport.longitude]
+    const coords: L.LatLngExpression = airport.coordinates
     bounds.push(coords)
 
     const frequency = airportFrequency.get(airport.iataCode) || 0
     const color = getFrequencyColor(frequency, maxFrequency)
 
     const marker = L.marker(coords, {
-      icon: createAirportMarker(airport, color)
+      icon: createAirportMarker(airport, color, markerSize)
     })
       .addTo(map!)
       .bindPopup(`
@@ -245,11 +416,15 @@ function visualizeFlights(visualizations: FlightVisualizationData[]) {
     })
 
     markers.push(marker)
+    markerData.set(marker, { airport, color })
   })
 
   // Fit map to show all airports
   if (bounds.length > 0) {
-    map.fitBounds(bounds, { padding: [50, 50] })
+    map.fitBounds(bounds, { 
+      padding: [50, 50],
+      maxZoom: 4 // Don't zoom out further than level 4
+    })
   }
 }
 
@@ -274,6 +449,12 @@ onMounted(() => {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       maxZoom: 19
     }).addTo(map)
+
+    // Add zoom event listener to update line weights and marker sizes
+    map.on('zoomend', () => {
+      updateLineWeights()
+      updateMarkerSizes()
+    })
 
     // Visualize initial data if available
     if (props.flightVisualizations && props.flightVisualizations.length > 0) {
@@ -301,8 +482,8 @@ watch(() => props.flightVisualizations, (newVisualizations) => {
   /* background color set inline based on frequency */
   color: white;
   border-radius: 50%;
-  width: 16px;
-  height: 16px;
+  width: var(--marker-size, 16px);
+  height: var(--marker-size, 16px);
   font-weight: 600;
   font-size: 10px;
   text-align: center;
@@ -400,6 +581,28 @@ watch(() => props.flightVisualizations, (newVisualizations) => {
 .flight-info {
   font-size: 12px;
   color: #6b7280;
+  margin-bottom: 2px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.flight-number {
+  font-weight: 600;
+  color: #374151;
+}
+
+.flight-date {
+  font-size: 11px;
+  color: #9ca3af;
+  white-space: nowrap;
+}
+
+.flight-separator {
+  height: 1px;
+  background: #e5e7eb;
+  margin: 8px 0;
 }
 
 /* Flight route lines */

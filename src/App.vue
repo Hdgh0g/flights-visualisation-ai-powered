@@ -34,12 +34,15 @@ import MapView from './components/MapView.vue'
 import YearFilter from './components/YearFilter.vue'
 import ResultBanner from './components/ResultBanner.vue'
 import { parseFlightsCsv } from './utils/flightDataParser'
-import { loadAirports } from './utils/airportsParser'
+import { loadAirportsWithReplacements } from './utils/airportsParser'
 import { buildFlightVisualizations } from './utils/flightVisualizationBuilder'
 import type { Flight } from './types/Flight'
 import type { ParseResult } from './types/Flight'
 import type { AirportsMap } from './types/Airport'
 import type { FlightVisualizationData } from './types/FlightVisualization'
+
+// Map of old airport codes to new codes (for airports that have changed their IATA codes)
+type CodeReplacementMap = Map<string, string>
 
 const isProcessing = ref(false)
 const parseResult = ref<ParseResult | null>(null)
@@ -48,14 +51,18 @@ const flightVisualizations = ref<FlightVisualizationData[]>([])
 const filteredVisualizations = ref<FlightVisualizationData[]>([])
 const distinctAirportsCount = ref(0)
 const airportsMap = ref<AirportsMap>(new Map())
+const codeReplacements = ref<CodeReplacementMap>(new Map())
 const isLoadingAirports = ref(true)
 
-// Load airports on mount
+// Load airports and code replacements on mount
 onMounted(async () => {
-  console.log('Loading airports database...')
-  airportsMap.value = await loadAirports()
+  console.log('Loading airports database and code replacements...')
+  const { airportsMap: airports, replacements } = await loadAirportsWithReplacements()
+  airportsMap.value = airports
+  codeReplacements.value = replacements
   isLoadingAirports.value = false
   console.log(`Loaded ${airportsMap.value.size} airports with IATA codes`)
+  console.log(`Loaded ${codeReplacements.value.size} airport code replacements`)
 })
 
 const handleFileUpload = async (file: File) => {
@@ -69,8 +76,8 @@ const handleFileUpload = async (file: File) => {
     const text = await file.text()
     const csvParseResult = parseFlightsCsv(text)
     
-    // Build visualizations with airport data
-    const vizResult = buildFlightVisualizations(csvParseResult.flights, airportsMap.value)
+    // Build visualizations with airport data and code replacements
+    const vizResult = buildFlightVisualizations(csvParseResult.flights, airportsMap.value, codeReplacements.value)
     
     // Combine all errors (CSV parsing + airport resolution)
     const allErrors = [...csvParseResult.errors, ...vizResult.errors]

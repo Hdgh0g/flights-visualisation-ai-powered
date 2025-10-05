@@ -2,6 +2,10 @@ import type { Flight } from '../types/Flight'
 import type { AirportsMap } from '../types/Airport'
 import type { VisualizationResult } from '../types/FlightVisualization'
 import { createFlightVisualization } from '../types/FlightVisualization'
+import { getAirportByCode } from './airportsParser'
+
+// Map of old airport codes to new codes (for airports that have changed their IATA codes)
+type CodeReplacementMap = Map<string, string>
 
 /**
  * Build visualization data from parsed flights and airports map
@@ -9,7 +13,8 @@ import { createFlightVisualization } from '../types/FlightVisualization'
  */
 export function buildFlightVisualizations(
   flights: Flight[],
-  airportsMap: AirportsMap
+  airportsMap: AirportsMap,
+  replacements: CodeReplacementMap = new Map()
 ): VisualizationResult {
   const visualizations = []
   const errors: string[] = []
@@ -24,8 +29,8 @@ export function buildFlightVisualizations(
     distinctAirports.add(flight.departureAirport)
     distinctAirports.add(flight.arrivalAirport)
 
-    // Resolve departure airport
-    const fromAirport = airportsMap.get(flight.departureAirport)
+    // Resolve departure airport (with fallback to replacement codes)
+    const fromAirport = getAirportByCode(flight.departureAirport, airportsMap, replacements)
     if (!fromAirport) {
       unresolvedAirports.add(flight.departureAirport)
       errors.push(
@@ -34,8 +39,8 @@ export function buildFlightVisualizations(
       continue
     }
 
-    // Resolve arrival airport
-    const toAirport = airportsMap.get(flight.arrivalAirport)
+    // Resolve arrival airport (with fallback to replacement codes)
+    const toAirport = getAirportByCode(flight.arrivalAirport, airportsMap, replacements)
     if (!toAirport) {
       unresolvedAirports.add(flight.arrivalAirport)
       errors.push(

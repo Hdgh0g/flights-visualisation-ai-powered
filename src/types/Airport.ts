@@ -3,8 +3,7 @@ export interface AirportData {
   ident: string
   type: string
   name: string
-  latitude: number
-  longitude: number
+  coordinates: [number, number] // [latitude, longitude]
   elevationFt: number | null
   continent: string
   isoCountry: string
@@ -22,8 +21,7 @@ export class Airport implements AirportData {
   ident: string
   type: string
   name: string
-  latitude: number
-  longitude: number
+  coordinates: [number, number] // [latitude, longitude]
   elevationFt: number | null
   continent: string
   isoCountry: string
@@ -40,8 +38,7 @@ export class Airport implements AirportData {
     this.ident = data.ident
     this.type = data.type
     this.name = data.name
-    this.latitude = data.latitude
-    this.longitude = data.longitude
+    this.coordinates = data.coordinates
     this.elevationFt = data.elevationFt
     this.continent = data.continent
     this.isoCountry = data.isoCountry
@@ -55,7 +52,15 @@ export class Airport implements AirportData {
   }
 
   getCoordinates(): [number, number] {
-    return [this.latitude, this.longitude]
+    return this.coordinates
+  }
+
+  get latitude(): number {
+    return this.coordinates[0]
+  }
+
+  get longitude(): number {
+    return this.coordinates[1]
   }
 
   getDisplayName(): string {
