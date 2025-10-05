@@ -20,6 +20,7 @@ const mapContainer = ref<HTMLElement | null>(null)
 let map: L.Map | null = null
 const markers: L.Marker[] = []
 const flightLines: any[] = [] // Using any because geodesic doesn't have types
+let currentOpenMarker: L.Marker | null = null
 
 // Helsinki coordinates (default center)
 const HELSINKI_LAT = 60.1699
@@ -31,12 +32,13 @@ function getFrequencyColor(frequency: number, maxFrequency: number): string {
   
   const ratio = frequency / maxFrequency
   
-  // Color gradient: blue -> cyan -> green -> yellow -> orange -> red
-  if (ratio <= 0.2) return '#3b82f6' // Blue
-  if (ratio <= 0.4) return '#06b6d4' // Cyan
-  if (ratio <= 0.6) return '#10b981' // Green
-  if (ratio <= 0.8) return '#f59e0b' // Orange
-  return '#ef4444' // Red
+  // Color gradient: blue -> cyan -> green -> orange -> red
+  // Adjusted to have more red and orange
+  if (ratio <= 0.15) return '#3b82f6' // Blue (0-15%)
+  if (ratio <= 0.3) return '#06b6d4' // Cyan (15-30%)
+  if (ratio <= 0.5) return '#10b981' // Green (30-50%)
+  if (ratio <= 0.75) return '#f59e0b' // Orange (50-75%)
+  return '#ef4444' // Red (75-100%)
 }
 
 // Convert hex color to RGB
@@ -74,6 +76,7 @@ function createAirportMarker(airport: Airport, color: string): L.DivIcon {
 function clearMarkers() {
   markers.forEach(marker => marker.remove())
   markers.length = 0
+  currentOpenMarker = null
 }
 
 function clearFlightLines() {
@@ -190,12 +193,56 @@ function visualizeFlights(visualizations: FlightVisualizationData[]) {
       .addTo(map!)
       .bindPopup(`
         <div class="airport-popup">
-          <div class="airport-popup-code">${airport.iataCode}</div>
+          <div class="airport-popup-code" style="color: ${color};">${airport.iataCode}</div>
           <div class="airport-popup-name">${airport.name}</div>
           <div class="airport-popup-city">${airport.municipality || airport.isoRegion}</div>
           <div class="airport-popup-frequency">${frequency} flight${frequency !== 1 ? 's' : ''}</div>
         </div>
       `)
+
+    // Get the marker element
+    const markerElement = marker.getElement()
+    
+    // Handle popup open event
+    marker.on('popupopen', () => {
+      // Close previous marker popup if exists
+      if (currentOpenMarker && currentOpenMarker !== marker) {
+        currentOpenMarker.closePopup()
+        const prevElement = currentOpenMarker.getElement()
+        if (prevElement) {
+          const prevContent = prevElement.querySelector('.airport-marker-content')
+          if (prevContent) {
+            prevContent.classList.remove('popup-open')
+          }
+        }
+      }
+      
+      // Set current marker as open
+      currentOpenMarker = marker
+      
+      // Add expanded class to keep it expanded
+      if (markerElement) {
+        const markerContent = markerElement.querySelector('.airport-marker-content')
+        if (markerContent) {
+          markerContent.classList.add('popup-open')
+        }
+      }
+    })
+
+    // Handle popup close event
+    marker.on('popupclose', () => {
+      if (currentOpenMarker === marker) {
+        currentOpenMarker = null
+      }
+      
+      // Remove expanded class
+      if (markerElement) {
+        const markerContent = markerElement.querySelector('.airport-marker-content')
+        if (markerContent) {
+          markerContent.classList.remove('popup-open')
+        }
+      }
+    })
 
     markers.push(marker)
   })
@@ -208,8 +255,19 @@ function visualizeFlights(visualizations: FlightVisualizationData[]) {
 
 onMounted(() => {
   if (mapContainer.value) {
-    // Initialize the map
-    map = L.map(mapContainer.value).setView([HELSINKI_LAT, HELSINKI_LNG], 4)
+    // Define world bounds to restrict panning
+    const worldBounds = L.latLngBounds(
+      L.latLng(-90, -180), // Southwest corner
+      L.latLng(90, 180)    // Northeast corner
+    )
+
+    // Initialize the map with restrictions
+    map = L.map(mapContainer.value, {
+      maxBounds: worldBounds,
+      maxBoundsViscosity: 1.0, // Makes the bounds solid (can't drag outside)
+      minZoom: 2,
+      maxZoom: 19
+    }).setView([HELSINKI_LAT, HELSINKI_LNG], 4)
 
     // Add OpenStreetMap tiles
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -281,6 +339,21 @@ watch(() => props.flightVisualizations, (newVisualizations) => {
   opacity: 1;
 }
 
+/* Keep marker expanded when popup is open */
+.airport-marker-content.popup-open {
+  filter: brightness(0.85);
+  width: 48px;
+  height: 28px;
+  border-radius: 14px;
+  padding: 0 8px;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.airport-marker-content.popup-open .airport-code-text {
+  opacity: 1;
+}
+
 .airport-popup {
   text-align: center;
   min-width: 150px;
@@ -289,7 +362,7 @@ watch(() => props.flightVisualizations, (newVisualizations) => {
 .airport-popup-code {
   font-size: 18px;
   font-weight: 700;
-  color: #667eea;
+  /* color is set inline to match marker color */
   margin-bottom: 4px;
 }
 

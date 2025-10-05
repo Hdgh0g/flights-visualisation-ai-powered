@@ -22,15 +22,25 @@
       </div>
       <div class="histogram-container">
         <div class="histogram-title">{{ selectedYear ? 'Flights by month' : 'Flights by year' }}</div>
-        <div class="histogram">
-          <div 
-            v-for="(bar, index) in histogramData" 
-            :key="index"
-            class="histogram-bar"
-            :style="{ height: `${bar.height}%` }"
-            :title="`${bar.label}: ${bar.count} flight${bar.count !== 1 ? 's' : ''}`"
-          >
-            <span class="histogram-label">{{ bar.label }}</span>
+        <div class="histogram-wrapper">
+          <div class="histogram-bars">
+            <div 
+              v-for="(bar, index) in histogramData" 
+              :key="index"
+              class="histogram-bar"
+              :style="{ height: `${bar.height}%` }"
+              :title="`${bar.label}: ${bar.count} flight${bar.count !== 1 ? 's' : ''}`"
+            >
+            </div>
+          </div>
+          <div class="histogram-labels">
+            <span 
+              v-for="(bar, index) in histogramData" 
+              :key="index"
+              class="histogram-label"
+            >
+              {{ bar.label }}
+            </span>
           </div>
         </div>
       </div>
@@ -162,7 +172,10 @@ watch(() => props.visualizations, () => {
 .year-filter {
   background: #f8f9fa;
   border-bottom: 1px solid #e2e8f0;
-  padding: 0.75rem 2rem 1.5rem 2rem;
+  padding: 0.75rem 2rem;
+  height: 100%;
+  display: flex;
+  align-items: center;
 }
 
 .filter-content {
@@ -232,15 +245,21 @@ watch(() => props.visualizations, () => {
   text-align: center;
 }
 
-.histogram {
+.histogram-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  padding: 8px;
+}
+
+.histogram-bars {
   display: flex;
   align-items: flex-end;
   gap: 3px;
   height: 40px;
-  padding: 0 8px;
-  background: white;
-  border-radius: 6px;
-  border: 1px solid #e5e7eb;
 }
 
 .histogram-bar {
@@ -249,7 +268,6 @@ watch(() => props.visualizations, () => {
   max-width: 20px;
   background: linear-gradient(to top, #667eea, #764ba2);
   border-radius: 2px 2px 0 0;
-  position: relative;
   cursor: pointer;
   transition: all 0.2s;
   min-height: 2px;
@@ -260,13 +278,19 @@ watch(() => props.visualizations, () => {
   transform: scaleY(1.05);
 }
 
+.histogram-labels {
+  display: flex;
+  gap: 3px;
+  justify-content: space-between;
+}
+
 .histogram-label {
-  position: absolute;
-  bottom: -16px;
-  left: 50%;
-  transform: translateX(-50%);
+  flex: 1;
+  min-width: 8px;
+  max-width: 20px;
   font-size: 9px;
   color: #6b7280;
+  text-align: center;
   white-space: nowrap;
 }
 
@@ -276,7 +300,7 @@ watch(() => props.visualizations, () => {
     align-items: flex-start;
   }
   
-  .histogram {
+  .histogram-wrapper {
     width: 100%;
     margin-top: 0.5rem;
   }
