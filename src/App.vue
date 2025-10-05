@@ -138,12 +138,24 @@ const handleFilterChanged = (filtered: FlightVisualizationData[]) => {
 
 .upload-section {
   flex: 1;
-  min-width: 0;
+  min-width: 350px;
 }
 
 .filter-section {
   flex: 1;
-  min-width: 0;
+  min-width: 350px;
+}
+
+@media (max-width: 700px) {
+  .top-row {
+    flex-direction: column;
+  }
+  
+  .upload-section,
+  .filter-section {
+    width: 100%;
+    min-width: 350px;
+  }
 }
 </style>
 

@@ -80,6 +80,8 @@ const handleFileChange = (event: Event) => {
   display: flex;
   align-items: center;
   gap: 1.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .title {
@@ -88,6 +90,7 @@ const handleFileChange = (event: Event) => {
   font-weight: 700;
   margin: 0;
   white-space: nowrap;
+  text-align: center;
 }
 
 .upload-area {
@@ -95,6 +98,7 @@ const handleFileChange = (event: Event) => {
   border-radius: 8px;
   padding: 0.4rem;
   flex: 1;
+  min-width: 280px;
 }
 
 .upload-label {

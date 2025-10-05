@@ -186,6 +186,7 @@ watch(() => props.visualizations, () => {
   justify-content: space-between;
   gap: 1rem;
   flex-wrap: wrap;
+  justify-content: center;
 }
 
 .filter-controls {
