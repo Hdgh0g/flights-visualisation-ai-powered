@@ -1,0 +1,6 @@
+airline,flight_code,departure_airport,arrival_airport,departure_timestamp_local,arrival_timestamp_local
+Finnair,AY123,HEL,JFK,2024-01-15 12:30:00,2024-01-15 08:45:00
+Lufthansa,LH456,HEL,FRA,14.02.2024 10:15:00,14.02.2024 10:30:00
+British Airways,BA789,HEL,XXX,2024-03-20 16:00:00,2024-03-20 15:30:00
+Air France,AF321,ZZZ,CDG,2019-07-28 20:20:00,2019-07-28 21:30:00
+KLM,KL654,HEL,AMS,14.11.2025 08:45:00,14.11.2025 09:00:00

@@ -1,0 +1,35 @@
+{
+  "name": "flights-visualisation-ai-powered",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc && vite build",
+    "preview": "vite preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Hdgh0g/flights-visualisation-ai-powered.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Hdgh0g/flights-visualisation-ai-powered/issues"
+  },
+  "homepage": "https://github.com/Hdgh0g/flights-visualisation-ai-powered#readme",
+  "description": "",
+  "dependencies": {
+    "leaflet": "^1.9.4",
+    "leaflet.geodesic": "^2.7.2",
+    "vue": "^3.5.22",
+    "vue-leaflet": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/leaflet": "^1.9.20",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.9",
+    "vue-tsc": "^3.1.0"
+  }
+}
