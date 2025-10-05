@@ -23,6 +23,10 @@ const markerData: Map<L.Marker, { airport: Airport; color: string }> = new Map()
 const flightLines: any[] = [] // Using any because geodesic doesn't have types
 let currentOpenMarker: L.Marker | null = null
 
+// Animation state
+let animationAborted = false
+let planeMarker: L.Marker | null = null
+
 // Helsinki coordinates (default center)
 const HELSINKI_LAT = 60.1699
 const HELSINKI_LNG = 24.9384
@@ -428,6 +432,226 @@ function visualizeFlights(visualizations: FlightVisualizationData[]) {
   }
 }
 
+// Animation functions
+async function startAnimation(): Promise<void> {
+  if (!map || !props.flightVisualizations) return
+  
+  animationAborted = false
+  
+  // Clear existing visualization
+  clearMarkers()
+  clearFlightLines()
+  
+  // Sort flights by departure time
+  const sortedFlights = [...props.flightVisualizations].sort((a, b) => 
+    a.departureTimestamp.getTime() - b.departureTimestamp.getTime()
+  )
+  
+  // Calculate airport colors once (based on frequency)
+  const airportFrequency = new Map<string, number>()
+  props.flightVisualizations.forEach(viz => {
+    airportFrequency.set(
+      viz.fromAirport.iataCode,
+      (airportFrequency.get(viz.fromAirport.iataCode) || 0) + 1
+    )
+    airportFrequency.set(
+      viz.toAirport.iataCode,
+      (airportFrequency.get(viz.toAirport.iataCode) || 0) + 1
+    )
+  })
+  const maxFrequency = Math.max(...Array.from(airportFrequency.values()))
+  
+  // Track which airports have been shown
+  const shownAirports = new Set<string>()
+  
+  // Animate each flight
+  for (const viz of sortedFlights) {
+    if (animationAborted) break
+    
+    const fromCoords: L.LatLngExpression = viz.fromAirport.coordinates
+    const toCoords: L.LatLngExpression = viz.toAirport.coordinates
+    
+    const fromFreq = airportFrequency.get(viz.fromAirport.iataCode) || 0
+    const toFreq = airportFrequency.get(viz.toAirport.iataCode) || 0
+    const fromColor = getFrequencyColor(fromFreq, maxFrequency)
+    const toColor = getFrequencyColor(toFreq, maxFrequency)
+    
+    // Show departure airport if not already shown
+    if (!shownAirports.has(viz.fromAirport.iataCode)) {
+      addAirportMarker(viz.fromAirport, fromColor, true)
+      shownAirports.add(viz.fromAirport.iataCode)
+    } else {
+      // Highlight existing departure airport
+      highlightAirportMarker(viz.fromAirport.iataCode)
+    }
+    
+    // Animate the flight route
+    await animateFlightRoute(viz, fromCoords, toCoords, fromColor, toColor)
+    
+    // Show arrival airport if not already shown
+    if (!shownAirports.has(viz.toAirport.iataCode)) {
+      addAirportMarker(viz.toAirport, toColor, true)
+      shownAirports.add(viz.toAirport.iataCode)
+    } else {
+      // Highlight existing arrival airport
+      highlightAirportMarker(viz.toAirport.iataCode)
+    }
+  }
+}
+
+function stopAnimation(): void {
+  animationAborted = true
+  
+  // Remove plane marker if exists
+  if (planeMarker && map) {
+    planeMarker.remove()
+    planeMarker = null
+  }
+  
+  // Re-visualize all flights normally
+  if (props.flightVisualizations) {
+    visualizeFlights(props.flightVisualizations)
+  }
+}
+
+function addAirportMarker(airport: Airport, color: string, highlight: boolean = false): void {
+  if (!map) return
+  
+  const currentZoom = map.getZoom()
+  const markerSize = getMarkerSize(currentZoom)
+  const coords: L.LatLngExpression = airport.coordinates
+  
+  const marker = L.marker(coords, {
+    icon: createAirportMarker(airport, color, markerSize)
+  })
+    .addTo(map!)
+  
+  markers.push(marker)
+  markerData.set(marker, { airport, color })
+  
+  // Add highlight effect if requested
+  if (highlight) {
+    const markerElement = marker.getElement()
+    if (markerElement) {
+      const markerContent = markerElement.querySelector('.airport-marker-content')
+      if (markerContent) {
+        markerContent.classList.add('highlight-pulse')
+        setTimeout(() => {
+          markerContent.classList.remove('highlight-pulse')
+        }, 600)
+      }
+    }
+  }
+}
+
+function highlightAirportMarker(airportCode: string): void {
+  // Find the marker for this airport
+  for (const [marker, data] of markerData.entries()) {
+    if (data.airport.iataCode === airportCode) {
+      const markerElement = marker.getElement()
+      if (markerElement) {
+        const markerContent = markerElement.querySelector('.airport-marker-content')
+        if (markerContent) {
+          markerContent.classList.add('highlight-pulse')
+          setTimeout(() => {
+            markerContent.classList.remove('highlight-pulse')
+          }, 600)
+        }
+      }
+      break
+    }
+  }
+}
+
+async function animateFlightRoute(
+  _viz: FlightVisualizationData,
+  fromCoords: L.LatLngExpression,
+  toCoords: L.LatLngExpression,
+  fromColor: string,
+  toColor: string
+): Promise<void> {
+  if (!map || animationAborted) return
+  
+  // Create geodesic line to get the path points
+  // @ts-ignore
+  const geodesicLine = L.geodesic([fromCoords, toCoords], {
+    steps: 50,
+    wrap: false
+  })
+  
+  const pathPoints = geodesicLine.getLatLngs()[0] as L.LatLng[]
+  const numSegments = 10
+  const segmentSize = Math.floor(pathPoints.length / numSegments)
+  
+  const currentZoom = map.getZoom()
+  
+  // Animate each segment
+  for (let i = 0; i < numSegments; i++) {
+    if (animationAborted) break
+    
+    const startIdx = i * segmentSize
+    const endIdx = i === numSegments - 1 ? pathPoints.length : (i + 1) * segmentSize
+    const segmentPoints = pathPoints.slice(startIdx, endIdx + 1)
+    
+    if (segmentPoints.length < 2) continue
+    
+    // Interpolate color for this segment
+    const ratio = i / (numSegments - 1)
+    const segmentColor = interpolateColor(fromColor, toColor, ratio)
+    
+    // Create and add the segment
+    const segment = L.polyline(segmentPoints, {
+      color: segmentColor,
+      weight: getLineWeight(currentZoom),
+      opacity: 0.6
+    }).addTo(map!)
+    
+    flightLines.push(segment)
+    
+    // Show plane emoji at the end of the segment
+    const endPoint = segmentPoints[segmentPoints.length - 1]
+    showPlaneMarker(endPoint)
+    
+    // Wait before showing next segment
+    await sleep(50)
+  }
+  
+  // Remove plane marker after flight is complete
+  if (planeMarker && map) {
+    planeMarker.remove()
+    planeMarker = null
+  }
+}
+
+function showPlaneMarker(position: L.LatLng): void {
+  if (!map) return
+  
+  // Remove previous plane marker
+  if (planeMarker) {
+    planeMarker.remove()
+  }
+  
+  // Create plane icon
+  const planeIcon = L.divIcon({
+    className: 'plane-marker',
+    html: '<div style="font-size: 20px;">✈️</div>',
+    iconSize: [20, 20],
+    iconAnchor: [10, 10]
+  })
+  
+  planeMarker = L.marker(position, { icon: planeIcon }).addTo(map!)
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+// Expose methods for parent component
+defineExpose({
+  startAnimation,
+  stopAnimation
+})
+
 onMounted(() => {
   if (mapContainer.value) {
     // Define world bounds to restrict panning
@@ -614,6 +838,29 @@ watch(() => props.flightVisualizations, (newVisualizations) => {
 .flight-route-line:hover {
   stroke-opacity: 1 !important;
   stroke-width: 3 !important;
+}
+
+/* Plane marker for animation */
+.plane-marker {
+  background: transparent;
+  border: none;
+  pointer-events: none;
+  z-index: 10000;
+}
+
+/* Highlight pulse effect for airport markers during animation */
+.airport-marker-content.highlight-pulse {
+  filter: brightness(0.85);
+  width: 48px !important;
+  height: 28px !important;
+  border-radius: 14px;
+  padding: 0 8px;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.airport-marker-content.highlight-pulse .airport-code-text {
+  opacity: 1;
 }
 </style>
 

@@ -3,7 +3,7 @@
     <div class="upload-container">
       <h1 class="title">Flight Data Visualisation</h1>
       <div class="upload-area">
-        <label for="file-input" class="upload-label" :class="{ disabled: isProcessing }">
+        <label for="file-input" class="upload-label" :class="{ disabled: isProcessing || disabled }">
           <div class="upload-content">
             <div v-if="isProcessing" class="processing-spinner">
               <div class="spinner"></div>
@@ -37,7 +37,7 @@
             accept=".csv"
             @change="handleFileChange"
             class="file-input"
-            :disabled="isProcessing"
+            :disabled="isProcessing || disabled"
           />
         </label>
       </div>
@@ -48,6 +48,7 @@
 <script setup lang="ts">
 defineProps<{
   isProcessing?: boolean
+  disabled?: boolean
 }>()
 
 const emit = defineEmits<{

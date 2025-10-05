@@ -3,7 +3,7 @@
     <div class="filter-content">
       <div class="filter-controls">
         <label class="filter-label">Year:</label>
-        <select v-model="selectedYear" @change="onYearChange" class="year-select">
+        <select v-model="selectedYear" @change="onYearChange" class="year-select" :disabled="disabled">
           <option value="">All years</option>
           <option v-for="year in availableYears" :key="year" :value="year">
             {{ year }}
@@ -54,6 +54,7 @@ import type { FlightVisualizationData } from '../types/FlightVisualization'
 
 const props = defineProps<{
   visualizations: FlightVisualizationData[]
+  disabled?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -221,6 +222,11 @@ watch(() => props.visualizations, () => {
   outline: none;
   border-color: #667eea;
   box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.year-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .filter-stats {
